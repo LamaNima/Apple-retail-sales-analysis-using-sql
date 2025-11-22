@@ -38,10 +38,98 @@ WHERE store_id IN (
 	ON s.sale_id = w.sale_id
 	WHERE claim_id IS NOT NULL
 )
-SELECT * FROM warranty;
 
 
 -- Percentage of warranty claim marked as completed
-SELECT repair_status,COUNT(claim_id) as no_in_current_status
+SELECT 
+	ROUND(
+	(COUNT(CASE WHEN repair_status = 'Completed' THEN claim_id END)*1.0/COUNT(claim_id) * 100),2) as pct_completed
+FROM warranty;
+
+
+-- Store with the highest total units sold in the last year
+SELECT TOP 1 st.store_id,store_name,SUM(quantity) as total_units_sold
+FROM sales s
+JOIN stores st
+ON s.store_id = st.store_id
+WHERE s.sale_date >= DATEFROMPARTS(YEAR(GETDATE())-1,1,1) AND s.sale_date <DATEFROMPARTS(YEAR(GETDATE()),1,1)
+GROUP BY st.store_id, st.store_name
+ORDER BY 3 DESC; 
+
+
+-- Number of unique products sold last year
+SELECT COUNT(DISTINCT p.product_name)
+FROM products p
+JOIN sales s
+ON p.product_id = s.product_id
+WHERE 
+	s.sale_date >= DATEFROMPARTS(YEAR(GETDATE())-1,1,1) 
+	AND s.sale_date < DATEFROMPARTS(YEAR(GETDATE()),1,1);
+
+
+-- Average price of products in each category
+SELECT
+	c.category_id,
+	c.category_name,
+	ROUND(AVG(price),2) as average_price
+FROM products P 
+INNER JOIN category c
+ON p.category_id = c.category_id
+GROUP BY c.category_id,c.category_name;
+
+
+-- Number of warranty claims filed in FEBRUARY,2024
+SELECT COUNT(claim_id) as Number_of_warranty_claims_in_feb 
 FROM warranty
-GROUP BY repair_status
+WHERE DATEPART(MONTH,claim_date) = 2;
+
+
+-- Best selling weekday for each store based on the highest quantity sold
+WITH cte AS(
+	SELECT 
+		st.store_id,
+		st.store_name,
+		DATENAME(WEEKDAY,s.sale_date) as day_name,
+		SUM(quantity) as units_sold,
+		RANK() OVER(
+			PARTITION BY st.store_name 
+			ORDER BY SUM(quantity) DESC) as rnk
+	FROM sales s 
+	JOIN stores st
+	ON s.store_id = st.store_id
+	GROUP BY 
+		st.store_id,st.store_name, DATENAME(WEEKDAY,s.sale_date)
+)
+
+SELECT 
+	store_name, day_name
+FROM cte
+WHERE rnk = 1;
+
+
+-- Best selling month for each store in 2024
+WITH cte AS(
+	SELECT 
+		s.store_id,
+		st.store_name,
+		DATENAME(MONTH,sale_date) as mnth,
+		SUM(quantity) as units_sold,
+		DENSE_RANK() OVER (
+		PARTITION BY s.store_id
+		ORDER BY SUM(quantity) DESC) AS rnk
+	FROM sales s 
+	INNER JOIN stores st
+	ON s.store_id = st.store_id
+	WHERE YEAR(sale_date) = 2024
+	GROUP BY s.store_id,st.store_name,DATENAME(MONTH,sale_date)
+)
+
+SELECT 
+	store_name,
+	mnth,
+	units_sold
+FROM cte
+WHERE rnk=1;
+
+
+-- Least selling product in each country for each year based on total units sold
