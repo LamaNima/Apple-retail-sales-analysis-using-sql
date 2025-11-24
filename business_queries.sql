@@ -133,3 +133,79 @@ WHERE rnk=1;
 
 
 -- Least selling product in each country for each year based on total units sold
+WITH cte AS(
+	SELECT 
+		p.product_name,
+		YEAR(sale_date) AS years,
+		st.country,
+		SUM(s.quantity) as units_sold,
+		DENSE_RANK() OVER (
+			PARTITION BY st.country,YEAR(sale_date)
+			ORDER BY SUM(s.quantity))
+		AS rnk
+	FROM products p
+	INNER JOIN sales s
+	ON p.product_id = s.product_id
+	INNER JOIN stores st
+	ON s.store_id = st.store_id
+	GROUP BY p.product_name,YEAR(sale_date),st.country
+)
+
+SELECT product_name,years,country,units_sold 
+FROM cte 
+WHERE rnk = 1;
+
+
+-- Number of warranty claims filed for products within 180 days of sale
+SELECT 
+	COUNT(w.claim_id) AS claims_within_180d
+FROM sales s
+JOIN warranty w ON w.sale_id = s.sale_id
+WHERE DATEDIFF(DAY, s.sale_date, w.claim_date) <= 180;
+
+
+-- Number of warranty claims filed for products launched in the last 2 years
+SELECT 
+    p.product_name,
+    COUNT(w.claim_id) AS no_of_claims,
+	COUNT(s.sale_id) AS total_sales
+FROM sales s
+LEFT JOIN warranty w
+ON w.sale_id = s.sale_id
+JOIN products p
+ON s.product_id  = p.product_id
+WHERE p.launch_date >= DATEFROMPARTS(YEAR(GETDATE())-2, 1, 1)  
+  AND p.launch_date <  GETDATE()    
+GROUP BY p.product_name;
+
+
+-- Number of months in the last 3 years where sales exceeded 20000 units in USA
+SELECT 
+	DATENAME(YEAR,s.sale_date) AS yrs,
+	DATENAME(MONTH,s.sale_date) AS mnth,
+	SUM(s.quantity) as total_units_sold
+FROM sales s
+JOIN stores st
+ON s.store_id = st.store_id
+WHERE s.sale_date >=DATEFROMPARTS(YEAR(GETDATE())-3,1,1) 
+		AND s.sale_date < GETDATE()
+		AND country = 'United States'
+GROUP BY DATENAME(YEAR,s.sale_date),DATENAME(MONTH,s.sale_date)
+HAVING SUM(s.quantity) > 20000;
+
+
+-- Top 3 categories with the most warranty claims filed in the last 3 years
+SELECT TOP 3
+	c.category_name,
+	COUNT(claim_id) AS no_of_claims
+FROM warranty w
+JOIN sales s
+ON w.sale_id = s.sale_id
+JOIN products p
+ON s.product_id = p.product_id
+JOIN category c
+ON p.category_id = c.category_id
+WHERE s.sale_date>= DATEFROMPARTS(YEAR(GETDATE())-3,1,1) 
+	AND s.sale_date < GETDATE()
+GROUP BY c.category_name
+ORDER BY COUNT(claim_id) DESC;
