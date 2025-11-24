@@ -38,13 +38,3 @@ CREATE TABLE warranty(
 	CONSTRAINT warranty_fk FOREIGN KEY (sale_id) REFERENCES sales(sale_id)
 )
 
-
-SELECT * FROM category;
-
-SELECT * FROM products;
-
-SELECT * FROM sales;
-
-SELECT * FROM warranty;
-
-SELECT * FROM stores;
