@@ -1,4 +1,8 @@
 -- Business Problems
+use AppleDB
+/*
+	SECTION 1 - Common Business Queries
+*/
 -- Number of stores in each country
 SELECT 
 	country,
@@ -209,3 +213,123 @@ WHERE s.sale_date>= DATEFROMPARTS(YEAR(GETDATE())-3,1,1)
 	AND s.sale_date < GETDATE()
 GROUP BY c.category_name
 ORDER BY COUNT(claim_id) DESC;
+
+
+/*
+	SECTION 2 - Complex Analytical Queries
+*/
+-- Percentage chance of receiving warranty claims after each purchase for each country
+SELECT 
+	country,
+	ROUND((no_of_claims * 1.0/ total_sales)*100,2) as warranty_claim_chance
+FROM 
+(
+	SELECT 
+		st.country,
+		COUNT(w.claim_id) as no_of_claims,
+		SUM(s.quantity) as total_sales
+	FROM warranty w
+	RIGHT JOIN sales s
+	ON w.sale_id = s.sale_id
+	JOIN stores st
+	ON s.store_id = st.store_id
+	GROUP BY st.country
+) AS t;
+
+
+-- Year-by-year growth ratio for each store
+WITH annual_revenue AS (
+	SELECT 
+		st.store_id,
+		st.store_name,
+		YEAR(s.sale_date) AS sales_year,
+		SUM(s.quantity*p.price) as total_sales
+	FROM sales s
+	JOIN stores st
+	ON s.store_id = st.store_id
+	JOIN products p
+	ON s.product_id = s.product_id
+	GROUP BY st.store_id, st.store_name, YEAR(s.sale_date)
+),
+yearly_growth AS(
+	SELECT 
+		store_name,
+		sales_year,
+		LAG(total_sales,1) OVER (
+			PARTITION BY store_name
+			ORDER BY sales_year
+			) as previous_year_sale,
+		total_sales as current_year_sale
+	FROM annual_revenue
+)
+
+SELECT 
+	store_name,
+	sales_year,
+	previous_year_sale,
+	current_year_sale,
+	ROUND(((current_year_sale-previous_year_sale)*1.0/previous_year_sale * 100),2) as growth_ratio
+FROM yearly_growth
+WHERE 
+	previous_year_sale IS NOT NULL
+	AND sales_year <> YEAR(GETDATE());
+
+
+-- Correlation between product price and warranty claims for products sold in the last 2 years segmented by price range
+WITH categorized AS (
+    SELECT 
+        CASE 
+            WHEN p.price < 500 THEN 'Less Expensive'
+            WHEN p.price BETWEEN 500 AND 1000 THEN 'Moderately Expensive'
+            ELSE 'Expensive'
+        END AS price_segment,
+        w.claim_id
+    FROM products p
+    JOIN sales s ON p.product_id = s.product_id
+    JOIN warranty w ON s.sale_id = w.sale_id
+    WHERE 
+        s.sale_date >= DATEFROMPARTS(YEAR(GETDATE()) - 2, 1, 1)
+        AND s.sale_date < GETDATE()
+)
+SELECT 
+    price_segment,
+    COUNT(claim_id) AS no_of_claim
+FROM categorized
+GROUP BY price_segment
+ORDER BY COUNT(claim_id);
+
+
+-- Monthly running total of sales for each store over the past four years.
+WITH monthly_sales AS (
+    SELECT
+        st.store_id,
+        st.store_name,
+        YEAR(s.sale_date) AS years,
+		MONTH(s.sale_date) AS months,
+        SUM(p.price * s.quantity) AS monthly_sale
+    FROM sales s
+    JOIN stores st 
+	ON s.store_id = st.store_id
+    JOIN products p 
+	ON s.product_id = p.product_id
+    WHERE s.sale_date >= DATEFROMPARTS(YEAR(GETDATE()) - 4, 1, 1)
+    GROUP BY
+        st.store_id,
+        st.store_name,
+        YEAR(s.sale_date),
+		MONTH(s.sale_date)
+)
+SELECT
+    store_id,
+    store_name,
+    years,
+    months,
+    monthly_sale,
+    SUM(monthly_sale) OVER (
+        PARTITION BY store_id
+        ORDER BY years, months
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS running_sale
+FROM monthly_sales
+ORDER BY store_id, years, months;
+
