@@ -24,7 +24,7 @@ The raw data files used in this project are available at:
 
 ## Entity Relationship Diagram (ERD)
 
-![ERD](https://github.com/najirh/Apple-Retail-Sales-SQL-Project---Analyzing-Millions-of-Sales-Rows/blob/main/erd.png)
+![ERD](https://github.com/LamaNima/Apple-retail-sales-analysis-using-sql/blob/main/erd.png)
 
 ## Database Schema
 
